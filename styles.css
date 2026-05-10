@@ -1,0 +1,11 @@
+/* Cold File Hider — base styles (minimal; hiding logic uses dynamic CSS injection) */
+
+/* Fade hidden files when toggled to show (subtle visual distinction) */
+.nav-file.cfh-show-hidden {
+    opacity: 0.35;
+    transition: opacity 0.2s;
+}
+
+.nav-file.cfh-show-hidden:hover {
+    opacity: 0.8;
+}

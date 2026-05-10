@@ -1,0 +1,10 @@
+{
+  "id": "cold-file-hider",
+  "name": "Cold File Hider",
+"version": "1.4.0",
+  "minAppVersion": "0.15.0",
+  "description": "Automatically hide inactive (cold) files from the file explorer. Files re-appear when accessed via search, quick switcher, or links.",
+  "author": "hehongxi",
+  "authorUrl": "https://github.com/hehongxi",
+  "isDesktopOnly": false
+}
