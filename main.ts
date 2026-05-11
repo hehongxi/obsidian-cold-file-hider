@@ -36,10 +36,6 @@ const DEFAULT_COLD_DAYS = 60;
 const SAVE_DEBOUNCE_MS = 500;
 const STAT_BATCH_SIZE = 50;
 
-const HIDE_CSS_ID = "cold-file-hider-css";
-const SHOW_CSS_ID = "cold-file-hider-show-css";
-const CSS_MARKER = "/* Cold File Hider */";
-
 type Lang = "zh" | "en";
 
 // ── i18n ───────────────────────────────────────────────────────────────────
@@ -97,7 +93,7 @@ const I18N: Record<Lang, Record<string, string>> = {
         "scan.now": "Scan Now",
         "show.hidden": "Show hidden files",
         "show.hidden.desc": "Temporarily show hidden files with lower opacity.",
-        "toggle.show.hide": "Toggle Show / Hide",
+        "toggle.show.hide": "Toggle show / hide",
         "status.line": "Currently hiding {0} files & folders. Last scan: {1}",
         "never": "never",
         "cmd.scan": "Scan vault for cold files",
@@ -194,29 +190,18 @@ function normalizeFolder(folder: string): string {
     return normalizePath(folder.trim()).replace(/\/+$/, "");
 }
 
-// ── CSS / Glob helpers ────────────────────────────────────────────────────
-
-function escapeCssPath(path: string): string {
-    return path
-        .replace(/\\/g, "\\\\\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/'/g, "\\'")
-        .replace(/\n/g, "\\a ")
-        .replace(/\r/g, "\\d ")
-        .replace(/\f/g, "\\c ")
-        .replace(/\t/g, "\\t ");
-}
+// ── Glob helper ───────────────────────────────────────────────────────────
 
 function globToRegex(pattern: string): RegExp | null {
     const trimmed = pattern.trim();
     if (!trimmed) return null;
     try {
-        const source = trimmed
-            .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-            .replace(/\*\*/g, "\u0000")
-            .replace(/\*/g, "[^/]*")
-            .replace(/\u0000/g, ".*")
-            .replace(/\?/g, "[^/]");
+        // Escape special regex chars first
+        let source = trimmed.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+        // Then replace glob patterns directly (single pass, no temp char)
+        source = source.replace(/\*\*/g, ".*");
+        source = source.replace(/\*/g, "[^/]*");
+        source = source.replace(/\?/g, "[^/]");
         return new RegExp(`^${source}$`);
     } catch (e) {
         console.warn("Cold File Hider: invalid exclude pattern skipped", pattern, e);
@@ -239,9 +224,6 @@ export default class ColdFileHiderPlugin extends Plugin {
      *  Built during scan, used to decide folder visibility. */
     private folderCoverage: Map<string, Set<string>> = new Map();
 
-    private styleEl: HTMLStyleElement | null = null;
-    private showStyleEl: HTMLStyleElement | null = null;
-
     private showingHidden = false;
     private scanning = false;
     private scanAbortController: AbortController | null = null;
@@ -250,6 +232,9 @@ export default class ColdFileHiderPlugin extends Plugin {
     private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     private savePromise: Promise<void> = Promise.resolve();
     private unloaded = false;
+
+    private observer: MutationObserver | null = null;
+    private observerDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     /** Shorthand for current-language i18n lookup. */
     tr(key: string, ...args: (string | number)[]): string {
@@ -263,13 +248,13 @@ export default class ColdFileHiderPlugin extends Plugin {
         this.hiddenSet = new Set(this.data.hiddenPaths);
 
         this.addCommand({
-            id: "cold-file-hider-scan-now",
+            id: "scan-now",
             name: this.tr("cmd.scan"),
             callback: () => void this.scanColdFiles(),
         });
 
         this.addCommand({
-            id: "cold-file-hider-toggle-show",
+            id: "toggle-show",
             name: this.tr("cmd.toggle"),
             callback: () => this.toggleShowHidden(),
         });
@@ -296,7 +281,8 @@ export default class ColdFileHiderPlugin extends Plugin {
             })
         );
 
-        this.injectCurrentCSS();
+        this.refreshUI();
+        this.startObserver();
 
         if (this.settings.scanOnStartup) {
             this.app.workspace.onLayoutReady(() => {
@@ -310,8 +296,8 @@ export default class ColdFileHiderPlugin extends Plugin {
         this.scanAbortController?.abort();
         this.scanAbortController = null;
         this.thawedDuringScan = null;
+        this.stopObserver();
         await this.flushSave();
-        this.removeAllCSS();
     }
 
     // ── Data persistence ─────────────────────────────────────────────────
@@ -377,68 +363,61 @@ export default class ColdFileHiderPlugin extends Plugin {
         await this.savePromise.catch((e) => console.error("Cold File Hider: pending save failed", e));
     }
 
-    // ── CSS injection ─────────────────────────────────────────────────────
+    // ── DOM attribute-based UI (replaces CSS injection) ──────────────────
 
-    injectCurrentCSS(): void {
-        if (this.showingHidden) {
-            this.removeHideCSS();
-            this.injectShowCSS();
-        } else {
-            this.removeShowCSS();
-            this.injectHideCSS();
+    refreshUI(): void {
+        this.applyExplorerAttributes();
+        this.cleanupOrphanObserver();
+    }
+
+    private startObserver(): void {
+        this.stopObserver();
+        const sidebarEl = document.querySelector('.workspace-leaf-content[data-type="file-explorer"] .nav-files-container');
+        if (!sidebarEl) {
+            // Retry on layout ready
+            this.app.workspace.onLayoutReady(() => this.startObserver());
+            return;
+        }
+        this.observer = new MutationObserver(() => {
+            if (this.observerDebounceTimer) clearTimeout(this.observerDebounceTimer);
+            this.observerDebounceTimer = setTimeout(() => this.applyExplorerAttributes(), 200);
+        });
+        this.observer.observe(sidebarEl, { childList: true, subtree: true });
+    }
+
+    private stopObserver(): void {
+        this.observer?.disconnect();
+        this.observer = null;
+        if (this.observerDebounceTimer) {
+            clearTimeout(this.observerDebounceTimer);
+            this.observerDebounceTimer = null;
         }
     }
 
-    private injectHideCSS(): void {
-        this.removeHideCSS();
-        if (this.hiddenSet.size === 0) return;
-
-        const rules = Array.from(this.hiddenSet, (path) => {
-            const esc = escapeCssPath(path);
-            return `.tree-item.nav-file:has(>.tree-item-self[data-path="${esc}"]),.tree-item.nav-folder:has(>.tree-item-self[data-path="${esc}"]){display:none!important}`;
-        });
-
-        this.styleEl = document.createElement("style");
-        this.styleEl.id = HIDE_CSS_ID;
-        this.styleEl.textContent = CSS_MARKER + "\n" + rules.join("\n");
-        document.head.appendChild(this.styleEl);
+    private applyExplorerAttributes(): void {
+        const paths = this.hiddenSet;
+        const items = document.querySelectorAll('.tree-item.nav-file > .tree-item-self, .tree-item.nav-folder > .tree-item-self');
+        for (const item of items) {
+            const path = item.getAttribute('data-path');
+            if (!path) continue;
+            const parent = item.parentElement;
+            if (!parent) continue;
+            if (paths.has(path)) {
+                parent.setAttribute('data-cfh', this.showingHidden ? 'dimmed' : 'hidden');
+            } else {
+                parent.removeAttribute('data-cfh');
+            }
+        }
     }
 
-    private removeHideCSS(): void {
-        this.styleEl?.remove();
-        this.styleEl = null;
-        const orphan = document.getElementById(HIDE_CSS_ID);
-        if (orphan && orphan.textContent?.startsWith(CSS_MARKER)) orphan.remove();
+    private cleanupOrphanObserver(): void {
+        // Ensure observer is still connected; restart if the sidebar was recreated
+        if (!this.observer) {
+            this.startObserver();
+        }
     }
 
-    private injectShowCSS(): void {
-        this.removeShowCSS();
-        if (this.hiddenSet.size === 0) return;
-
-        const rules = Array.from(this.hiddenSet, (path) => {
-            const esc = escapeCssPath(path);
-            return `.tree-item.nav-file:has(>.tree-item-self[data-path="${esc}"]),.tree-item.nav-folder:has(>.tree-item-self[data-path="${esc}"]){display:flex!important;opacity:0.35}`;
-        });
-
-        this.showStyleEl = document.createElement("style");
-        this.showStyleEl.id = SHOW_CSS_ID;
-        this.showStyleEl.textContent = CSS_MARKER + "\n" + rules.join("\n");
-        document.head.appendChild(this.showStyleEl);
-    }
-
-    private removeShowCSS(): void {
-        this.showStyleEl?.remove();
-        this.showStyleEl = null;
-        const orphan = document.getElementById(SHOW_CSS_ID);
-        if (orphan && orphan.textContent?.startsWith(CSS_MARKER)) orphan.remove();
-    }
-
-    private removeAllCSS(): void {
-        this.removeHideCSS();
-        this.removeShowCSS();
-    }
-
-    // ── Folder coverage ────────────────────────────────────────────────────
+    // ── Folder coverage ──────────────────────────────────────────────────
 
     /**
      * Build folderCoverage: for every folder, the set of all file paths
@@ -477,7 +456,7 @@ export default class ColdFileHiderPlugin extends Plugin {
         }
     }
 
-    // ── Core: Scan ────────────────────────────────────────────────────────
+    // ── Core: Scan ───────────────────────────────────────────────────────
 
     async scanColdFiles(): Promise<void> {
         if (this.scanning) {
@@ -501,7 +480,7 @@ export default class ColdFileHiderPlugin extends Plugin {
                 this.hiddenSet.clear();
                 this.data.lastScanTime = Date.now();
                 this.persistHiddenPaths();
-                this.injectCurrentCSS();
+                this.refreshUI();
                 return;
             }
 
@@ -577,12 +556,12 @@ export default class ColdFileHiderPlugin extends Plugin {
 
             this.data.lastScanTime = Date.now();
             this.persistHiddenPaths();
-            this.injectCurrentCSS();
+            this.refreshUI();
 
             new Notice(
                 this.tr("notice.scan.done", files.length, this.hiddenSet.size)
             );
-            console.log(
+            console.debug(
                 this.tr("console.scan.done", files.length, this.hiddenSet.size, this.settings.thresholdDays)
             );
         } finally {
@@ -592,7 +571,7 @@ export default class ColdFileHiderPlugin extends Plugin {
         }
     }
 
-    // ── Core: Unhide / path updates ───────────────────────────────────────
+    // ── Core: Unhide / path updates ──────────────────────────────────────
 
     unhideFile(path: string): void {
         const normalized = normalizePath(path);
@@ -619,8 +598,8 @@ export default class ColdFileHiderPlugin extends Plugin {
         }
 
         this.persistHiddenPaths();
-        this.injectCurrentCSS();
-        console.log(this.tr("console.thawed", normalized));
+        this.refreshUI();
+        console.debug(this.tr("console.thawed", normalized));
     }
 
     private renameHiddenPath(oldPath: string, newPath: string): void {
@@ -631,7 +610,7 @@ export default class ColdFileHiderPlugin extends Plugin {
         this.hiddenSet.delete(oldNorm);
         this.hiddenSet.add(newNorm);
         this.persistHiddenPaths();
-        this.injectCurrentCSS();
+        this.refreshUI();
     }
 
     private deleteHiddenPath(path: string): void {
@@ -640,14 +619,14 @@ export default class ColdFileHiderPlugin extends Plugin {
 
         this.hiddenSet.delete(normalized);
         this.persistHiddenPaths();
-        this.injectCurrentCSS();
+        this.refreshUI();
     }
 
-    // ── Toggle ────────────────────────────────────────────────────────────
+    // ── Toggle ───────────────────────────────────────────────────────────
 
     toggleShowHidden(): void {
         this.showingHidden = !this.showingHidden;
-        this.injectCurrentCSS();
+        this.refreshUI();
         new Notice(
             this.showingHidden
                 ? this.tr("notice.showing")
@@ -655,7 +634,7 @@ export default class ColdFileHiderPlugin extends Plugin {
         );
     }
 
-    // ── Exclusion ─────────────────────────────────────────────────────────
+    // ── Exclusion ────────────────────────────────────────────────────────
 
     private isExcludedPath(
         path: string,
@@ -685,12 +664,13 @@ class ColdFileHiderSettingTab extends PluginSettingTab {
         const tr = (key: string, ...args: (string | number)[]) => p.tr(key, ...args);
 
         containerEl.empty();
-        containerEl.createEl("h2", { text: tr("plugin.name") });
+
+        new Setting(containerEl).setName(tr("plugin.name")).setHeading();
 
         // ── About / Ad section (top) ────────────────────────────────────────
         containerEl.createEl("hr");
-        const aboutTitle = containerEl.createEl("h3", { text: tr("about.title") });
-        const aboutDesc = containerEl.createEl("p", {
+        new Setting(containerEl).setName(tr("about.title")).setHeading();
+        containerEl.createEl("p", {
             cls: "setting-item-description",
             text: tr("about.desc"),
         });
@@ -698,14 +678,12 @@ class ColdFileHiderSettingTab extends PluginSettingTab {
             href: "mailto:koujika97@gmail.com",
             text: tr("about.email"),
         });
-        linkEmail.style.display = "block";
-        linkEmail.style.marginTop = "4px";
+        linkEmail.classList.add("cfh-link-block");
         const aboutCta = containerEl.createEl("p", {
             cls: "setting-item-description",
             text: tr("about.cta"),
         });
-        aboutCta.style.marginTop = "8px";
-        aboutCta.style.fontWeight = "500";
+        aboutCta.classList.add("cfh-cta-text");
         containerEl.createEl("hr");
 
         // ── Language selector ──

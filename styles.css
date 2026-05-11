@@ -1,11 +1,38 @@
-/* Cold File Hider — base styles (minimal; hiding logic uses dynamic CSS injection) */
+/* Cold File Hider — base styles */
 
-/* Fade hidden files when toggled to show (subtle visual distinction) */
-.nav-file.cfh-show-hidden {
+/* Hide cold files */
+.tree-item.nav-file[data-cfh="hidden"],
+.tree-item.nav-folder[data-cfh="hidden"] {
+    display: none !important;
+}
+
+/* Dim cold files when showing */
+.tree-item.nav-folder[data-cfh="dimmed"],
+.tree-item.nav-file[data-cfh="dimmed"] {
+    display: flex !important;
+    opacity: 0.35;
+}
+
+/* Legacy fallback for .cfh-show-hidden hover */
+.cfh-show-hidden {
     opacity: 0.35;
     transition: opacity 0.2s;
 }
-
-.nav-file.cfh-show-hidden:hover {
+.cfh-show-hidden:hover {
     opacity: 0.8;
+}
+
+/* Link block style for about section */
+.cfh-link-block {
+    display: block;
+    margin-top: 4px;
+}
+.cfh-link-block + .cfh-link-block {
+    margin-top: 2px;
+}
+
+/* CTA text style for about section */
+.cfh-cta-text {
+    margin-top: 8px;
+    font-weight: 500;
 }
