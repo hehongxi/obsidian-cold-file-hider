@@ -291,13 +291,13 @@ export default class ColdFileHiderPlugin extends Plugin {
         }
     }
 
-    async onunload(): Promise<void> {
+    onunload(): void {
         this.unloaded = true;
         this.scanAbortController?.abort();
         this.scanAbortController = null;
         this.thawedDuringScan = null;
         this.stopObserver();
-        await this.flushSave();
+        this.flushSave().catch((e) => console.error("Cold File Hider: flush failed", e));
     }
 
     // ── Data persistence ─────────────────────────────────────────────────
@@ -736,7 +736,7 @@ class ColdFileHiderSettingTab extends PluginSettingTab {
             .setDesc(tr("exclude.folders.desc"))
             .addTextArea((text) => {
                 text
-                    .setPlaceholder("daily\ntemplates")
+                    .setPlaceholder("Daily\ntemplates")
                     .setValue(p.settings.excludeFolders.join("\n"))
                     .onChange(async (value) => {
                         p.settings.excludeFolders = sanitizeStringArray(
@@ -753,7 +753,7 @@ class ColdFileHiderSettingTab extends PluginSettingTab {
             .setDesc(tr("exclude.patterns.desc"))
             .addTextArea((text) => {
                 text
-                    .setPlaceholder("templates/*\n**/Archive/**")
+                    .setPlaceholder("Templates/*\n**/Archive/**")
                     .setValue(p.settings.excludePatterns.join("\n"))
                     .onChange(async (value) => {
                         p.settings.excludePatterns = sanitizeStringArray(
