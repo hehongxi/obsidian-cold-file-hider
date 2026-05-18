@@ -1,5 +1,5 @@
 /**
- * Cold File Hider — Obsidian Plugin  v1.4.0
+ * Cold File Hider — Obsidian Plugin  v1.4.1
  *
  * Hides files of ANY type that haven't been modified for N days from the file
  * explorer via CSS injection. Hidden files re-appear permanently when opened
@@ -210,7 +210,7 @@ function globToRegex(pattern: string): RegExp | null {
 }
 
 function nextAnimationFrame(): Promise<void> {
-    return new Promise((resolve) => window.setTimeout(resolve, 0));
+    return new Promise((resolve) => activeWindow.setTimeout(resolve, 0));
 }
 
 // ── Plugin ────────────────────────────────────────────────────────────────
@@ -229,12 +229,12 @@ export default class ColdFileHiderPlugin extends Plugin {
     private scanAbortController: AbortController | null = null;
     private thawedDuringScan: Set<string> | null = null;
 
-    private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    private saveDebounceTimer: ReturnType<typeof activeWindow.setTimeout> | null = null;
     private savePromise: Promise<void> = Promise.resolve();
     private unloaded = false;
 
     private observer: MutationObserver | null = null;
-    private observerDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    private observerDebounceTimer: ReturnType<typeof activeWindow.setTimeout> | null = null;
 
     /** Shorthand for current-language i18n lookup. */
     tr(key: string, ...args: (string | number)[]): string {
@@ -297,14 +297,14 @@ export default class ColdFileHiderPlugin extends Plugin {
         this.scanAbortController = null;
         this.thawedDuringScan = null;
         this.stopObserver();
-        this.flushSave().catch((e) => console.error("Cold File Hider: flush failed", e));
+        void this.flushSave().catch((e) => console.error("Cold File Hider: flush failed", e));
     }
 
     // ── Data persistence ─────────────────────────────────────────────────
 
     async loadAll(): Promise<void> {
         try {
-            const raw = await this.loadData();
+            const raw: unknown = await this.loadData();
             const root = isRecord(raw) ? raw : {};
             const rawSettings = isRecord(root.settings) ? root.settings : {};
             this.settings = {
@@ -344,8 +344,8 @@ export default class ColdFileHiderPlugin extends Plugin {
 
     private debouncedSave(): void {
         if (this.unloaded) return;
-        if (this.saveDebounceTimer) clearTimeout(this.saveDebounceTimer);
-        this.saveDebounceTimer = setTimeout(() => {
+        if (this.saveDebounceTimer) activeWindow.clearTimeout(this.saveDebounceTimer);
+        this.saveDebounceTimer = activeWindow.setTimeout(() => {
             this.saveDebounceTimer = null;
             this.savePromise = this.savePromise
                 .catch(() => undefined)
@@ -356,7 +356,7 @@ export default class ColdFileHiderPlugin extends Plugin {
 
     private async flushSave(): Promise<void> {
         if (this.saveDebounceTimer) {
-            clearTimeout(this.saveDebounceTimer);
+            activeWindow.clearTimeout(this.saveDebounceTimer);
             this.saveDebounceTimer = null;
             this.data.hiddenPaths = Array.from(this.hiddenSet).sort();
         }
@@ -372,15 +372,15 @@ export default class ColdFileHiderPlugin extends Plugin {
 
     private startObserver(): void {
         this.stopObserver();
-        const sidebarEl = document.querySelector('.workspace-leaf-content[data-type="file-explorer"] .nav-files-container');
+        const sidebarEl = activeDocument.querySelector('.workspace-leaf-content[data-type="file-explorer"] .nav-files-container');
         if (!sidebarEl) {
             // Retry on layout ready
             this.app.workspace.onLayoutReady(() => this.startObserver());
             return;
         }
         this.observer = new MutationObserver(() => {
-            if (this.observerDebounceTimer) clearTimeout(this.observerDebounceTimer);
-            this.observerDebounceTimer = setTimeout(() => this.applyExplorerAttributes(), 200);
+            if (this.observerDebounceTimer) activeWindow.clearTimeout(this.observerDebounceTimer);
+            this.observerDebounceTimer = activeWindow.setTimeout(() => this.applyExplorerAttributes(), 200);
         });
         this.observer.observe(sidebarEl, { childList: true, subtree: true });
     }
@@ -389,14 +389,14 @@ export default class ColdFileHiderPlugin extends Plugin {
         this.observer?.disconnect();
         this.observer = null;
         if (this.observerDebounceTimer) {
-            clearTimeout(this.observerDebounceTimer);
+            activeWindow.clearTimeout(this.observerDebounceTimer);
             this.observerDebounceTimer = null;
         }
     }
 
     private applyExplorerAttributes(): void {
         const paths = this.hiddenSet;
-        const items = document.querySelectorAll('.tree-item.nav-file > .tree-item-self, .tree-item.nav-folder > .tree-item-self');
+        const items = Array.from(activeDocument.querySelectorAll('.tree-item.nav-file > .tree-item-self, .tree-item.nav-folder > .tree-item-self'));
         for (const item of items) {
             const path = item.getAttribute('data-path');
             if (!path) continue;
