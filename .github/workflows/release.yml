@@ -32,24 +32,26 @@ jobs:
           tag="${GITHUB_REF#refs/tags/}"
           echo "Creating release for tag: ${tag}"
 
-          cat > /tmp/release_body.md << EOF
-          ## v${tag} — Scorecard Compliance
+          cat > /tmp/release_body.md << 'ENDOFBODY'
+          ## REPLACE_TAG — Scorecard Compliance
 
           All 8 Risks and 19 Warnings from the Obsidian Community Scorecard have been fixed.
 
           ### Risks Fixed (8)
-          - Replaced \`document.createElement('style')\` with \`styles.css\` file
-          - Replaced direct HTML heading elements with \`new Setting().setHeading()\`
-          - Removed inline style assignments (\`element.style.marginTop\`, \`.display\`, \`.fontWeight\`) → CSS classes
+          - Replaced `document.createElement('style')` with `styles.css` file
+          - Replaced direct HTML heading elements with `new Setting().setHeading()`
+          - Removed inline style assignments (`element.style.marginTop`, `.display`, `.fontWeight`) → CSS classes
 
           ### Warnings Fixed (19)
-          - \`document\` → \`activeDocument\` for popout window compatibility (×6)
-          - \`setTimeout\`/\`clearTimeout\` → \`activeWindow.*\` variants (×6)
+          - `document` → `activeDocument` for popout window compatibility (×6)
+          - `setTimeout`/`clearTimeout` → `activeWindow.*` variants (×6)
           - Command IDs no longer include plugin ID prefix (×2)
-          - \`createEl('style')\` replaces \`document.createElement('style')\` (×2)
-          - Fixed promise-return type mismatch in \`onunload()\`
-          - Explicit \`unknown\` typing for \`loadData()\` return to avoid implicit any
-          EOF
+          - `createEl('style')` replaces `document.createElement('style')` (×2)
+          - Fixed promise-return type mismatch in `onunload()`
+          - Explicit `unknown` typing for `loadData()` return to avoid implicit any
+          ENDOFBODY
+
+          sed -i "s/REPLACE_TAG/v${tag}/" /tmp/release_body.md
 
           body=$(cat /tmp/release_body.md)
 
