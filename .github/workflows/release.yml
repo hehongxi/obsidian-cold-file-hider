@@ -29,7 +29,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
-          gh release create "$tag" \
-            --title="$tag" \
-            --draft \
-            main.js manifest.json styles.css
+          # Read the current changelog/notes or use default
+          notes="## v${tag}
+
+          Scorecard compliance release.
+
+          ### Files
+          - \`main.js\` — compiled plugin
+          - \`manifest.json\` — plugin metadata
+          - \`styles.css\` — plugin styles"
+
+          curl -s -X POST \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases" \
+            -d "$(jq -n \
+              --arg tag "$tag" \
+              --arg name "$tag" \
+              --arg body "$notes" \
+              '{tag_name: $tag, name: $name, body: $body, draft: true}')" \
+            > /tmp/release.json
+
+          release_id=$(jq -r '.id' /tmp/release.json)
+          echo "Release ID: $release_id"
+
+          for file in main.js manifest.json styles.css; do
+            curl -s -X POST \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${file}" \
+              --data-binary "@${file}"
+          done
