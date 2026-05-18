@@ -30,50 +30,26 @@ jobs:
         run: |
           set -e
           tag="${GITHUB_REF#refs/tags/}"
-          echo "Creating release for tag: ${tag}"
 
-          cat > /tmp/release_body.md << 'ENDOFBODY'
-          ## REPLACE_TAG — Scorecard Compliance
-
-          All 8 Risks and 19 Warnings from the Obsidian Community Scorecard have been fixed.
-
-          ### Risks Fixed (8)
-          - Replaced `document.createElement('style')` with `styles.css` file
-          - Replaced direct HTML heading elements with `new Setting().setHeading()`
-          - Removed inline style assignments (`element.style.marginTop`, `.display`, `.fontWeight`) → CSS classes
-
-          ### Warnings Fixed (19)
-          - `document` → `activeDocument` for popout window compatibility (×6)
-          - `setTimeout`/`clearTimeout` → `activeWindow.*` variants (×6)
-          - Command IDs no longer include plugin ID prefix (×2)
-          - `createEl('style')` replaces `document.createElement('style')` (×2)
-          - Fixed promise-return type mismatch in `onunload()`
-          - Explicit `unknown` typing for `loadData()` return to avoid implicit any
-          ENDOFBODY
-
-          sed -i "s/REPLACE_TAG/v${tag}/" /tmp/release_body.md
-
-          body=$(cat /tmp/release_body.md)
-
-          response=$(curl -s -w "\n%{http_code}" -X POST \
+          resp=$(curl -s -w '\n%{http_code}' -X POST \
             -H "Authorization: token ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases" \
-            -d "{\"tag_name\":\"${tag}\",\"name\":\"${tag}\",\"body\":$(echo "$body" | jq -Rs .),\"draft\":true}")
+            -d "{\"tag_name\":\"${tag}\",\"name\":\"${tag}\",\"draft\":false}")
 
-          http_code=$(echo "$response" | tail -1)
-          body_json=$(echo "$response" | sed '$d')
+          http_code=$(echo "$resp" | tail -1)
+          json=$(echo "$resp" | sed '$d')
 
-          echo "HTTP status: ${http_code}"
-          echo "Response: ${body_json}"
+          echo "HTTP: ${http_code}"
+          echo "JSON: ${json}"
 
-          if [ "${http_code}" != "201" ]; then
-            echo "Failed to create release"
+          if [ "$http_code" != "201" ]; then
+            echo "FAILED"
             exit 1
           fi
 
-          release_id=$(echo "$body_json" | jq -r '.id')
-          echo "Release created, ID: ${release_id}"
+          release_id=$(echo "$json" | jq -r '.id')
+          echo "Release ID: ${release_id}"
 
           for file in main.js manifest.json styles.css; do
             echo "Uploading ${file}..."
@@ -82,7 +58,6 @@ jobs:
               -H "Content-Type: application/octet-stream" \
               "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${file}" \
               --data-binary "@${file}"
-            echo ""
           done
 
-          echo "Draft release ready: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
+          echo "Done: $tag"
