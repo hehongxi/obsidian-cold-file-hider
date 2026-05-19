@@ -12,27 +12,3 @@
     display: flex !important;
     opacity: 0.35;
 }
-
-/* Legacy fallback for .cfh-show-hidden hover */
-.cfh-show-hidden {
-    opacity: 0.35;
-    transition: opacity 0.2s;
-}
-.cfh-show-hidden:hover {
-    opacity: 0.8;
-}
-
-/* Link block style for about section */
-.cfh-link-block {
-    display: block;
-    margin-top: 4px;
-}
-.cfh-link-block + .cfh-link-block {
-    margin-top: 2px;
-}
-
-/* CTA text style for about section */
-.cfh-cta-text {
-    margin-top: 8px;
-    font-weight: 500;
-}

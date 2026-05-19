@@ -1,6 +1,6 @@
 {
   "name": "obsidian-cold-file-hider",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Auto-hide inactive (cold) files in Obsidian file explorer. Re-appear on access.",
   "main": "main.js",
   "type": "module",
@@ -13,7 +13,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^16.11.6",
-    "builtin-modules": "3.3.0",
     "esbuild": "0.17.3",
     "obsidian": "latest",
     "tslib": "2.4.0",

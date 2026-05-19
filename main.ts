@@ -1,5 +1,5 @@
 /**
- * Cold File Hider — Obsidian Plugin  v1.4.1
+ * Cold File Hider — Obsidian Plugin  v1.4.2
  *
  * Hides files of ANY type that haven't been modified for N days from the file
  * explorer via CSS injection. Hidden files re-appear permanently when opened
@@ -71,10 +71,6 @@ const I18N: Record<Lang, Record<string, string>> = {
         "console.thawed": "Cold File Hider: thawed {0}",
         "console.aborted": "Cold File Hider: scan aborted",
         "console.skipped": "Cold File Hider: skipped stat",
-        "about.title": "关于作者",
-        "about.desc": "hehongxi（何鸿曦），化工行业从业者。工作之余喜欢捣鼓技术——从 PVA 光学膜流延工艺到自动化脚本到 Obsidian 插件，兴趣驱动。如果你在化工领域有自动化、数据分析或辅助工具方面的需求，欢迎交流：",
-        "about.email": "邮箱：koujika97@gmail.com",
-        "about.cta": "欢迎化工行业的同行交流技术问题。",
     },
     en: {
         "plugin.name": "Cold File Hider",
@@ -106,10 +102,6 @@ const I18N: Record<Lang, Record<string, string>> = {
         "console.thawed": "Cold File Hider: thawed {0}",
         "console.aborted": "Cold File Hider: scan aborted",
         "console.skipped": "Cold File Hider: skipped stat",
-        "about.title": "About the author",
-        "about.desc": "hehongxi — working in the chemical engineering industry. In my spare time I tinker with tech, from PVA optical film casting processes to automation scripts to Obsidian plugins. If you're in the chemical field and need automation, data analysis, or productivity tools, feel free to reach out:",
-        "about.email": "Email: koujika97@gmail.com",
-        "about.cta": "Chemical industry peers welcome to connect.",
     },
 };
 
@@ -665,27 +657,6 @@ class ColdFileHiderSettingTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        new Setting(containerEl).setName(tr("plugin.name")).setHeading();
-
-        // ── About / Ad section (top) ────────────────────────────────────────
-        containerEl.createEl("hr");
-        new Setting(containerEl).setName(tr("about.title")).setHeading();
-        containerEl.createEl("p", {
-            cls: "setting-item-description",
-            text: tr("about.desc"),
-        });
-        const linkEmail = containerEl.createEl("a", {
-            href: "mailto:koujika97@gmail.com",
-            text: tr("about.email"),
-        });
-        linkEmail.classList.add("cfh-link-block");
-        const aboutCta = containerEl.createEl("p", {
-            cls: "setting-item-description",
-            text: tr("about.cta"),
-        });
-        aboutCta.classList.add("cfh-cta-text");
-        containerEl.createEl("hr");
-
         // ── Language selector ──
         new Setting(containerEl)
             .setName(tr("lang"))
@@ -784,13 +755,17 @@ class ColdFileHiderSettingTab extends PluginSettingTab {
                 })
             );
 
-        const infoEl = containerEl.createEl("p", { cls: "setting-item-description" });
+        // Status line via Setting desc (no createEl)
         const hiddenCount = p.hiddenSet.size;
         const lastScanTime = p.data.lastScanTime;
         const lastScanText =
             lastScanTime > 0
-                ? new Date(lastScanTime).toLocaleString(p.settings.lang === "zh" ? "zh-CN" : "en-US")
+                ? new Date(lastScanTime).toLocaleString(
+                      p.settings.lang === "zh" ? "zh-CN" : "en-US"
+                  )
                 : tr("never");
-        infoEl.textContent = tr("status.line", hiddenCount, lastScanText);
+        new Setting(containerEl).setDesc(
+            tr("status.line", hiddenCount, lastScanText)
+        );
     }
 }
